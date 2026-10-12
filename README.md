@@ -226,7 +226,7 @@ const client = new KimiClient({ baseUrl: 'http://127.0.0.1:3080/kimi', apiKey: '
   `GET /sessions/{id}/fs/*` (Range/etag are not supported yet).
 - Degraded semantics where DSH lacks an equivalent capability: `approvals` (empty list/40404),
   `fork` (new session in the same workspace, without copying history), `compact` (40910),
-  `undo` (40911), `btw` (60002), `add-dir` (no-op), `title-generate` (60002).
+  `undo` (40911), `btw` (60002), `add-dir` (60002), `title-generate` (60002).
 - The host must support `webServer.registerUpgrade` to enable WS; otherwise only REST is available
   (a warning appears in the startup log).
 

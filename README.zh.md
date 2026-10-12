@@ -205,7 +205,7 @@ const client = new KimiClient({ baseUrl: 'http://127.0.0.1:3080/kimi', apiKey: '
 - REST：`/kimi/api/v1/**`（信封 `{code,msg,data,request_id,details}`，业务失败 HTTP 200 + 非零 code）与 `/kimi/api/v2/sessions`
 - WS：`/kimi/api/v1/ws`（server_hello protocol_version=2；subscribe/subscribe_v2）
 - fs 动作支持子集：`list / stat / read / mkdir / search / grep`；文件下载 `GET /sessions/{id}/fs/*`（暂不支持 Range/etag）
-- 降级语义（DSH 无对应能力，如实返回错误码）：`approvals`（空列表/40404）、`fork`（新建同工作区会话，不复制历史）、`compact`（40910）、`undo`（40911）、`btw`（60002）、`add-dir`（空实现）、`title-generate`（60002）
+- 降级语义（DSH 无对应能力，如实返回错误码）：`approvals`（空列表/40404）、`fork`（新建同工作区会话，不复制历史）、`compact`（40910）、`undo`（40911）、`btw`（60002）、`add-dir`（60002）、`title-generate`（60002）
 - 宿主需支持 `webServer.registerUpgrade` 才启用 WS；缺失时仅 REST 可用（启动日志有警告）
 
 ## API 路由汇总
