@@ -2,6 +2,8 @@
 
 **English** | [中文](README.zh.md)
 
+> New here? Start with the illustrated [tutorial (Chinese)](docs/TUTORIAL.zh.md).
+
 A DSH plugin that exposes DeepSeek Harness over HTTP: the workspaces, sessions, models, settings,
 skills and files already inside DSH become plain REST endpoints and SSE streams, plus an
 OpenAI-compatible `/chat/completions` so an existing OpenAI client can talk to DSH unchanged.
@@ -11,8 +13,8 @@ an agent, a non-DSH agent that calls DSH as a tool, or a gateway that puts DSH b
 
 - **No new dependencies** — the plugin only `inject`s `webServer` and `tools`; the routes ride on the
   DSH host webserver (or an optional standalone port).
-- **60 routes** (REST + SSE), documented by a built-in OpenAPI 3.0 spec and a request page, plus an API Key settings page.
-- **Bilingual skill included** — `skills/dsh-web-service/SKILL.md` teaches a DSH agent how to drive
+- **REST, SSE and Kimi WS endpoints**, documented by a built-in OpenAPI 3.0 spec and a request page, plus an API Key settings page.
+- **Chinese-language skill included** — `skills/dsh-web-service/SKILL.md` teaches a DSH agent how to drive
   the API (streaming, cancelling, answering pending questions, file uploads).
 
 ## Install
@@ -43,7 +45,7 @@ a profile with HMR assembles it immediately, otherwise restart DSH. Verify:
 
 ```bash
 curl -s http://127.0.0.1:3080/api/v1/system/status   # {"ok":true,...}
-curl -sI http://127.0.0.1:3080/api/v1/docs           # HTTP/1.1 200 OK
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3080/api/v1/docs # 200
 ```
 
 > **Upgrading.** The asset name carries no version, so `latest/download/dsh-web-service.tgz` always
@@ -79,12 +81,14 @@ All fields are optional; they live in the plugin row's `config` in your profile 
 | Field | Default | Meaning |
 |---|---|---|
 | `pathPrefix` | `/api/v1` | Route prefix |
-| `apiKey` | `''` | Non-empty enables auth; requests must carry this key |
+| `apiKey` | `''` | Legacy key; non-empty forces auth, accepting it or any active managed key |
 | `standalonePort` | `0` | `>0` also listens on its own port; `0` means host webserver only |
 | `cors` | `true` | Allow cross-origin requests |
 | `defaultCwd` | `''` | Default working directory; empty means `process.cwd()` |
 | `maxUploadBytes` | `2 GiB` | Upload size limit; use the chunked endpoints for bigger files |
 | `adminRemoteAccess` | `false` | Whether non-loopback clients may reach the API Key admin endpoints; key management is local-only by default |
+| `kimi` | `true` | Enable the Kimi REST / WS compatibility layer |
+| `kimiPrefix` | `/kimi` | Separate Kimi route prefix |
 
 > `apiKey` is only a **legacy single key**, kept for backward compatibility. Manage keys from the
 > settings page instead — see [API Key management](#api-key-management-settings-page).
@@ -136,8 +140,8 @@ Creating a key offers **two sources for the key value** (the `plaintext` field o
 | **Use a custom key** | Paste an existing key (16–256 visible ASCII chars) to slot into an existing client or migrate |
 
 > The strength of a custom key is your responsibility, so it **never shows even a prefix** — otherwise
-> `my-secret-api-key-xxx` would leak most of its value in the first 12 characters. The server still
-> stores only its hash, and the list marks such records as custom. A value that already has an
+> `my-secret-api-key-xxx` would leak most of its value in the first 12 characters. The server stores a hash and an admin-token-encrypted sealed copy, so the key remains copyable;
+> the list marks such records as custom. A value that already has an
 > **active** record is rejected (400); revoked/expired values may be registered again.
 
 **Two separate credentials**
@@ -156,18 +160,18 @@ cat "${DSH_HOME:-$HOME/.dsh}/dsh-web-service/admin-token"
 
 **Security contract**
 
-- Two things are persisted per key: `sha256(plaintext)` (for authentication) and a **reversible**
+- Managed keys (random and custom) persist `sha256(plaintext)` (for authentication) and a **reversible**
   `sealed` blob (for the list's "copy" button). `sealed` is AES-256-GCM under a key HKDF-derived from
   the **admin token**, so `api-keys.json` alone (backup, screenshot, pasted into an issue) does not
   reveal keys — the 0600 `admin-token` in the same directory is also required.
-- Every key in the list has a "copy" button: the plaintext is fetched on demand over an
+- Active, recoverable managed keys can be copied: the plaintext is fetched on demand over an
   admin-token-authenticated endpoint and written straight to the clipboard — never into the DOM,
   localStorage, or logs.
 - Keys created **before** sealed storage shipped only have a hash and cannot be recovered; "copy"
   guides you to "rotate" instead. Deleting/recreating the admin token invalidates old sealed blobs,
   which likewise degrades to "not copyable" rather than silently returning a wrong value.
 - Admin endpoints accept **loopback clients only** by default. Remote key management requires
-  `adminRemoteAccess: true`. Browser requests are same-origin checked (CSRF / DNS-rebinding);
+  `adminRemoteAccess: true`. Browser requests carrying Origin are checked against Host (to block cross-origin management);
   cross-origin gets `403 FORBIDDEN_ORIGIN`.
 - Revoking is immediate and irreversible; rotating invalidates the old key at once. The safer path
   is: create a replacement key, roll it out, then revoke the old one.
@@ -203,40 +207,42 @@ The store lives at `<DSH_HOME>/dsh-web-service/api-keys.json` (mode 0600).
 7. **Interactive sessions** — read pending `ask_user_question` batches and answer them over REST, cancel
    a running turn, upload/list/download workspace files (including resumable chunked upload).
 8. **API Key settings page** — `GET /api/v1/settings/api-keys` manages third-party access keys in one
-   place: multiple named keys, masked display, create / rotate / revoke, and an auth on/off switch.
+   place: multiple named keys, masked display, create / rotate / revoke, copy from the list, and an auth on/off switch.
    Hashes plus an admin-token-encrypted sealed copy are persisted.
 
 ## Kimi API compatibility layer
 
-The compatibility layer for the kimi local service (kap-server) API mounts under a separate prefix
-(default `/kimi`, configured by `kimiPrefix`). Connect directly with the official kimi SDK:
+The compatibility layer for the Kimi local service (kap-server) API mounts under a separate prefix (default `/kimi`, configured by `kimiPrefix`). A REST example (omit Authorization when auth is disabled):
 
-```js
-import { KimiClient } from '@kimi-code/sdk' // Use the actual SDK package name
-const client = new KimiClient({ baseUrl: 'http://127.0.0.1:3080/kimi', apiKey: '<data key>' })
+```bash
+curl -s http://127.0.0.1:3080/kimi/api/v1/sessions \
+  -H 'Authorization: Bearer <data key>'
+curl -s -X POST http://127.0.0.1:3080/kimi/api/v1/sessions \
+  -H 'Authorization: Bearer <data key>' -H 'Content-Type: application/json' \
+  -d '{"metadata":{"cwd":"/tmp/my-project"},"title":"Kimi compat"}'
 ```
 
-- Enable: `kimi` (default `true`); prefix: `kimiPrefix` (default `/kimi`).
-- Authentication: reuses the API Key system; anonymous access is available when auth is disabled.
-  WS uses the `kimi-code.bearer.<token>` subprotocol.
-- REST: `/kimi/api/v1/**` (envelope `{code,msg,data,request_id,details}`; business failures return
-  HTTP 200 with a nonzero code) and `/kimi/api/v2/sessions`.
-- WS: `/kimi/api/v1/ws` (`server_hello` with `protocol_version=2`; `subscribe` / `subscribe_v2`).
-- Supported fs actions: `list / stat / read / mkdir / search / grep`; file download via
-  `GET /sessions/{id}/fs/*` (Range/etag are not supported yet).
-- Degraded semantics where DSH lacks an equivalent capability: `approvals` (empty list/40404),
-  `fork` (new session in the same workspace, without copying history), `compact` (40910),
-  `undo` (40911), `btw` (60002), `add-dir` (60002), `title-generate` (60002).
-- The host must support `webServer.registerUpgrade` to enable WS; otherwise only REST is available
-  (a warning appears in the startup log).
+- Enable: `kimi` (default `true`); prefix: `kimiPrefix` (default `/kimi`), independent of the native pathPrefix.
+- Authentication reuses data-plane API Keys; anonymous when disabled. `GET /kimi/healthz` is always public. WS uses the `kimi-code.bearer.<token>` subprotocol.
+- REST: `/kimi/api/v1/**` and `/kimi/api/v2/sessions`; JSON envelope `{code,msg,data,request_id,details?}`. Business failures usually return HTTP 200 with a nonzero code; framework errors and download failures may return real HTTP error statuses.
+- WS: `/kimi/api/v1/ws`, server_hello protocol_version=2; subscribe takes session_ids/cursors, subscribe_v2 takes session_id/transcript/transcript_since, supporting transcript.reset / transcript.ops and cursor replay.
+- Prompts: `POST /kimi/api/v1/sessions/:id/prompts` submits content blocks. `/prompts::steer` (double colon, prompt_ids) and single-prompt steer currently only acknowledge, without steering execution; abort stops the whole session.
+- fs actions: `POST /kimi/api/v1/sessions/:id/fs:list` and siblings support list/stat/read/mkdir/search/grep. Download at `GET /kimi/api/v1/sessions/:id/fs/relative-path:download`; paths stay within the session root. Range/etag are not supported yet.
+- Degraded semantics: approvals empty list/40404; fork creates a session in the same workspace without history; compact 40910; undo 40911; btw, add-dir, children POST and `/title/generate` 60002. Archive/restore and trust markers are process-local.
+- The main webserver needs webServer.registerUpgrade for WS on that port; otherwise it serves REST only with a startup warning. The optional standalonePort listener still supports WS.
+
+See [SKILL.md](skills/dsh-web-service/SKILL.md#kimi-api-兼容层) for the full REST catalog, WS frames and usage, and `scripts/smoke-kimi-compat.mjs` for runnable examples.
 
 ## API routes
 
 Default prefix: `/api/v1`
 
+Ordinary endpoints use data-plane API Keys. Docs/assets, the settings HTML and updates are public; `/api-keys*` JSON endpoints require the Admin Token. OpenAPI currently omits some mounted routes; the catalog below includes them. `/fs/*` operates on absolute host paths; `/sessions/:id/files` stays within the session cwd.
+
 | Module | Method | Path | Notes |
 |---|---|---|---|
 | **System** | `GET` | `/system/status` | System status, live models, port info |
+| | `GET` | `/system/updates` | Public update check against GitHub Releases |
 | **Workspaces** | `GET` | `/workspaces` | List workspaces |
 | | `POST` | `/workspaces` | Create / add a workspace |
 | | `GET` | `/workspaces/:id` | Workspace detail |
@@ -258,6 +264,13 @@ Default prefix: `/api/v1`
 | | `POST` | `/sessions/:id/files` | Upload into the session workspace (multipart, or raw + `?filename=`); duplicate names get `-1` suffixes, and the agent can read them with its file tools |
 | | `GET` | `/sessions/:id/files` | List the session workspace (`?path=` browses a subdirectory, directories first) |
 | | `GET` | `/sessions/:id/files/download` | Download a workspace file (`?path=` relative; `?inline=1` for in-browser preview) |
+| | `GET` | `/sessions/:id/permission` | Current permission preset and available choices |
+| | `PUT` | `/sessions/:id/permission` | Switch permission with `{preset}` |
+| **Files** | `POST` | `/sessions/:id/files/resumable` | Initialize with `?name=&size=&mimeType=`; returns uploadId |
+| | `GET` | `/sessions/:id/files/resumable/:uploadId` | Read size and received byte count |
+| | `PUT` | `/sessions/:id/files/resumable/:uploadId` | Raw chunk + `?offset=`; 409 on offset mismatch |
+| | `POST` | `/sessions/:id/files/resumable/:uploadId/complete` | Finalize, check size, return files[].path |
+| | `DELETE` | `/sessions/:id/files/resumable/:uploadId` | Abort and remove staged chunks |
 | **Streaming** | `POST` | `/sessions/:id/prompt-stream` | Send a prompt and receive generation as SSE |
 | | `GET` | `/sessions/:id/events` | Subscribe to the session event bus as SSE |
 | | `POST` | `/sessions/:id/prompt` | Send a prompt and wait for the result synchronously |
@@ -269,19 +282,43 @@ Default prefix: `/api/v1`
 | | `GET` | `/presets` | Available agent presets |
 | **Settings** | `GET` | `/settings` | Settings namespaces |
 | | `PATCH` | `/settings/:namespace` | Update one namespace |
+| **Skills** | `GET` | `/skills` | List skills; `root,cwd,search` queries |
+| | `POST` | `/skills` | Create from JSON or upload a .zip/.tgz via multipart |
+| | `GET` | `/skills/:name` | Metadata, body and full source |
+| | `PUT` | `/skills/:name` | Update metadata / body / invocation flags |
+| | `DELETE` | `/skills/:name` | Delete the skill |
+| | `GET` | `/skills/:name/body` | Download SKILL.md as text/markdown |
+| | `GET` | `/skills/:name/archive` | Download the complete skill directory as .tgz |
+| **FS** | `GET` | `/fs/list` | Absolute directory path (defaults to home); `all=1` includes files |
+| | `GET` | `/fs/download` | Absolute file `?path=`; optional `inline=1` |
+| | `POST` | `/fs/mkdir` | Create a directory with `{path:parent,name}` |
+| | `DELETE` | `/fs/remove` | Recursive removal by absolute `?path=`; root/home protected |
+| | `POST` | `/fs/upload` | Absolute destination `?path=`; multipart or raw upload |
 | **API Keys** | `GET` | `/settings/api-keys` | **API Key settings page** (HTML, public; data endpoints need the Admin Token) |
 | | `GET` | `/api-keys` | List API keys (masked; never returns plaintext or hashes) |
 | | `POST` | `/api-keys` | Create an API key (plaintext returned; copyable later) |
 | | `PATCH` | `/api-keys/:id` | Update name / note / expiry |
 | | `POST` | `/api-keys/:id/rotate` | Rotate (old key dies immediately; new key copyable later) |
-| | `POST` | `/api-keys/:id/reveal` | Fetch the plaintext for copying (admin token; 409 for legacy keys) |
+| | `POST` | `/api-keys/:id/reveal` | Fetch the plaintext for copying (admin token; 409 for historical / expired / revoked keys or invalid sealed copies) |
 | | `POST` | `/api-keys/:id/revoke` | Revoke (idempotent, irreversible) |
 | | `DELETE` | `/api-keys/:id` | Delete the record (revoked keys only) |
 | | `GET` | `/api-keys/auth` | Read auth status |
 | | `PUT` | `/api-keys/auth` | Enable / disable auth (disabling requires `confirm: "disable-auth"`) |
 | **Docs** | `GET` | `/docs` | Interactive API request page |
-| | `GET` | `/docs/reference` | Full API reference & online debugging (Swagger UI, try-it-out) |
+| | `GET` | `/docs/reference` | API reference & online debugging (Swagger UI, try-it-out for spec entries) |
 | | `GET` | `/openapi.json` | OpenAPI 3.0 document |
+| | `GET` | `/docs/assets/swagger-ui.css` | Self-hosted Swagger stylesheet (public) |
+| | `GET` | `/docs/assets/swagger-ui-bundle.js` | Self-hosted Swagger bundle (public) |
+
+## Update checks
+
+Both `/docs` and the API Key settings page offer a “check updates” button in the header. You can also call the public endpoint directly:
+
+```bash
+curl -s http://127.0.0.1:3080/api/v1/system/updates
+```
+
+Returns `data:{current,latest,updateAvailable,releaseUrl,checkedAt,error?}`. The sole source is [Wuqiyang312/deepseek-server-api GitHub Releases](https://github.com/Wuqiyang312/deepseek-server-api/releases) (API: `https://api.github.com/repos/Wuqiyang312/deepseek-server-api/releases/latest`), matching the homepage and issue tracker. Success is cached for 10 minutes, failure for 60 seconds, with a 5-second timeout. Failure still returns HTTP 200 + ok:true, with latest/updateAvailable null and an error, leaving the service operational. When no Release exists, updateAvailable=false and latest=null with an explanation. This only checks; it does not install updates. See Install for upgrading.
 
 ## Development
 
@@ -316,14 +353,14 @@ skill-filesystem provider discovers it live (no restart) — usable from the nex
 
 ```bash
 # Install into a specific directory (project-level .dsh/skills or .agents/skills)
-curl -fsSL .../install-skill.sh | bash -s -- --dir /path/to/project/.dsh/skills
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash -s -- --dir /path/to/project/.dsh/skills
 
 # Pick a branch / repository
-curl -fsSL .../install-skill.sh | bash -s -- --branch dev
-curl -fsSL .../install-skill.sh | bash -s -- --repo other/deepseek-server-api
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash -s -- --branch dev
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash -s -- --repo other/deepseek-server-api
 
 # Uninstall
-curl -fsSL .../install-skill.sh | bash -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash -s -- uninstall
 # or locally: bash install-skill.sh uninstall
 ```
 
