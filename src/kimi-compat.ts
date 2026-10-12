@@ -1279,7 +1279,9 @@ export function registerKimiCompatRoutes(
     // ':steer' → 批量 steer；':abort' → 整会话 abort；':<pid>:steer' / ':<pid>:abort' → 单 prompt 动作。
     const colonTail = String((params as any).steer ?? '')
     if (colonTail === ':steer') {
-      const ids = Array.isArray(body?.prompt_ids) ? body.prompt_ids.map(String).filter(Boolean) : []
+      const ids = Array.isArray(body?.prompt_ids)
+        ? body.prompt_ids.filter((x: unknown): x is string => typeof x === 'string' && Boolean(x.trim())).map((x: string) => x.trim())
+        : []
       if (ids.length === 0) {
         fail(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, 'validation failed', rid,
           [{ path: 'prompt_ids', message: 'prompt_ids must be a non-empty array' }]))
@@ -1787,7 +1789,8 @@ export function registerKimiCompatRoutes(
     }
     const root = (await resolveSessionCwd(ctx, sessionId)) || process.cwd()
     const rel = String(body?.path ?? '')
-    const target = safeJoin(root, rel)
+    const joined = safeJoin(root, rel)
+    const target = joined === undefined ? undefined : await realpathWithinRoot(root, joined)
     if (target === undefined) {
       fail(res, kimiErr(KimiErrorCode.FS_PATH_ESCAPES_SESSION, `path escapes session root: ${rel}`, rid))
       return
@@ -1814,7 +1817,8 @@ export function registerKimiCompatRoutes(
       return
     }
     const root = (await resolveSessionCwd(ctx, sessionId)) || process.cwd()
-    const target = safeJoin(root, rel)
+    const joined = safeJoin(root, rel)
+    const target = joined === undefined ? undefined : await realpathWithinRoot(root, joined)
     if (target === undefined) {
       fail(res, kimiErr(KimiErrorCode.FS_PATH_ESCAPES_SESSION, `path escapes session root: ${rel}`, rid))
       return
@@ -1830,6 +1834,9 @@ export function registerKimiCompatRoutes(
     res.setHeader('Content-Length', String(st.size))
     res.setHeader('Content-Disposition', buildContentDisposition(path.basename(target)))
     const stream = createReadStream(target)
+    res.on('close', () => {
+      if (!stream.readableEnded) stream.destroy()
+    })
     stream.on('error', (err: any) => {
       if (!res.headersSent) {
         sendKimiJson(res, kimiErr(KimiErrorCode.INTERNAL_ERROR, err?.message || 'read failed', rid), 500)
@@ -2041,6 +2048,28 @@ function promptItemOf(prompt: any, sessionId: string): Record<string, unknown> {
 
 // ==================== fs 动作实现 ====================
 
+/** 解析 target 的真实路径（含符号链接），必须仍位于 root 真实路径内；root 本身先 realpath */
+async function realpathWithinRoot(root: string, target: string): Promise<string | undefined> {
+  let realRoot: string
+  try { realRoot = await fsp.realpath(root) } catch { return undefined }
+  // 从 target 向上找最近存在的祖先做 realpath，再拼回剩余部分
+  let probe = target
+  const rest: string[] = []
+  for (;;) {
+    try {
+      const real = await fsp.realpath(probe)
+      const full = path.join(real, ...rest.reverse())
+      if (full !== realRoot && !full.startsWith(realRoot.endsWith(path.sep) ? realRoot : realRoot + path.sep)) return undefined
+      return full
+    } catch {
+      const parent = path.dirname(probe)
+      if (parent === probe) return undefined
+      rest.push(path.basename(probe))
+      probe = parent
+    }
+  }
+}
+
 async function handleFsAction(
   res: ServerResponse,
   rid: string,
@@ -2088,11 +2117,35 @@ async function handleFsAction(
       }
       const offset = Math.max(0, Math.trunc(Number(body?.offset ?? 0)) || 0)
       const limit = Math.max(0, Math.trunc(Number(body?.limit ?? 0)) || 0)
-      const raw = await fsp.readFile(target)
-      if (raw.length > FS_TEXT_MAX_BYTES && offset === 0 && limit === 0) {
+      if (st.size > FS_TEXT_MAX_BYTES && offset === 0 && limit === 0) {
         fail(res, kimiErr(KimiErrorCode.FS_TOO_LARGE, `file exceeds ${FS_TEXT_MAX_BYTES} bytes; use offset/limit`, rid))
         return
       }
+      if (st.size > FS_TEXT_MAX_BYTES) {
+        // 大文件 offset 按字节跳过；读取量封顶，文件句柄始终关闭。
+        const raw = Buffer.alloc(Math.min(FS_TEXT_MAX_BYTES, Math.max(0, st.size - offset)))
+        const handle = await fsp.open(target, 'r')
+        let bytesRead = 0
+        try {
+          while (bytesRead < raw.length) {
+            const chunk = await handle.read(raw, bytesRead, raw.length - bytesRead, offset + bytesRead)
+            if (chunk.bytesRead === 0) break
+            bytesRead += chunk.bytesRead
+          }
+        } finally {
+          await handle.close()
+        }
+        const text = raw.subarray(0, bytesRead).toString('utf8')
+        const slice = limit > 0 ? text.slice(0, limit) : text
+        sendKimiJson(res, kimiOk({
+          content: slice,
+          encoding: 'utf8',
+          truncated: offset + bytesRead < st.size || slice.length < text.length,
+          size: st.size,
+        }, rid))
+        return
+      }
+      const raw = await fsp.readFile(target)
       const text = raw.toString('utf8')
       const slice = limit > 0 ? text.slice(offset, offset + limit) : text.slice(offset)
       sendKimiJson(res, kimiOk({
