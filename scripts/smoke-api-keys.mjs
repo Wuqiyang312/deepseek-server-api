@@ -119,7 +119,7 @@ try {
   )
   check('未鉴权时页头「新建」按钮被收起', html.includes('id="btnCreate" style="display:none;"'))
   check('设置页含已吊销删除入口与确认弹层', html.includes('data-act="del"') && html.includes('dlgDelete') && html.includes('submitDelete'))
-  check('设置页含 GitHub 项目主页跳转', html.includes('href="https://github.com/toddpan/dsh-webapi"'))
+  check('设置页含 GitHub 项目主页跳转', html.includes('href="https://github.com/Wuqiyang312/deepseek-server-api"'))
   check('设置页含 SWAGGER 调试入口（新窗口打开 /docs/reference）',
     html.includes('href="' + PREFIX + '/docs/reference"') && html.includes('>SWAGGER</span>'))
   check('设置页页头只保留 SWAGGER/GitHub/问题反馈/检查更新',
@@ -128,14 +128,14 @@ try {
   // ==================== 版本号 / 页头工具条 / 在线接口文档 ====================
   console.log('\n== 页头工具条与在线接口文档 ==')
   check('设置页标题旁显示版本号', html.includes('v' + pkg.version + '</span>'))
-  check('设置页含问题反馈（GitHub Issues）入口', html.includes('github.com/toddpan/dsh-webapi/issues'))
+  check('设置页含问题反馈（GitHub Issues）入口', html.includes('github.com/Wuqiyang312/deepseek-server-api/issues'))
   check('设置页含检查更新入口与结果弹层', html.includes('checkUpdate') && html.includes('dlgUpdate') && html.includes('/system/updates'))
 
   const docsPage = await fetch(`http://127.0.0.1:${server.address().port}${PREFIX}/docs`)
   const docsHtml = await docsPage.text()
   check('/docs 页公开可访问且含版本号', docsPage.status === 200 && docsHtml.includes('v' + pkg.version + '</span>'), `status=${docsPage.status}`)
   check('/docs 页含 GitHub / 问题反馈 / 检查更新入口',
-    docsHtml.includes('github.com/toddpan/dsh-webapi"') && docsHtml.includes('github.com/toddpan/dsh-webapi/issues') && docsHtml.includes('checkUpdate'))
+    docsHtml.includes('github.com/Wuqiyang312/deepseek-server-api"') && docsHtml.includes('github.com/Wuqiyang312/deepseek-server-api/issues') && docsHtml.includes('checkUpdate'))
   check('/docs 页含「在线调试 (Swagger)」入口', docsHtml.includes('href="' + PREFIX + '/docs/reference"'))
 
   const refPage = await fetch(`http://127.0.0.1:${server.address().port}${PREFIX}/docs/reference`)

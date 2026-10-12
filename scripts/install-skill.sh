@@ -7,7 +7,7 @@
 #       让 AI 智能体即刻学会如何调用 DSH Web Service API。
 #
 # 一键安装：
-#   curl -fsSL https://raw.githubusercontent.com/toddpan/dsh-webapi/main/scripts/install-skill.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash
 #
 # 指定安装位置（可选）：
 #   curl -fsSL ... | bash -s -- --dir ~/.dsh/skills          # 用户级（默认）
@@ -19,7 +19,7 @@
 # =============================================================================
 set -euo pipefail
 
-REPO="toddpan/dsh-webapi"
+REPO="Wuqiyang312/deepseek-server-api"
 BRANCH="${DSH_WEBAPI_BRANCH:-main}"
 SKILL_NAME="dsh-web-service"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"

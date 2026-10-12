@@ -27,11 +27,11 @@
   "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/toddpan/dsh-webapi.git"
+    "url": "git+https://github.com/Wuqiyang312/deepseek-server-api.git"
   },
-  "homepage": "https://github.com/toddpan/dsh-webapi#readme",
+  "homepage": "https://github.com/Wuqiyang312/deepseek-server-api#readme",
   "bugs": {
-    "url": "https://github.com/toddpan/dsh-webapi/issues"
+    "url": "https://github.com/Wuqiyang312/deepseek-server-api/issues"
   },
   "keywords": [
     "dsh",

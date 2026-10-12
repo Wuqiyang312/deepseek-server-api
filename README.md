@@ -30,7 +30,7 @@ template once before installing into it:
 dsh --profile api-server --from-default-profile web --dump-config > /dev/null
 # 2) Install dsh-web-service into that profile
 dsh plugin --profile api-server add \
-  https://github.com/toddpan/dsh-webapi/releases/latest/download/dsh-web-service.tgz
+  https://github.com/Wuqiyang312/deepseek-server-api/releases/latest/download/dsh-web-service.tgz
 # 3) Start (or restart DSH if it is already running under this profile)
 dsh --profile api-server
 ```
@@ -49,12 +49,12 @@ curl -sI http://127.0.0.1:3080/api/v1/docs           # HTTP/1.1 200 OK
 > **Upgrading.** The asset name carries no version, so `latest/download/dsh-web-service.tgz` always
 > points at the newest build for a *fresh* install — but package managers may reuse a cached
 > resolution of that URL. To move an existing install to a known build, pin the versioned asset:
-> `dsh plugin --profile api-server add https://github.com/toddpan/dsh-webapi/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
+> `dsh plugin --profile api-server add https://github.com/Wuqiyang312/deepseek-server-api/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
 
 **Option 2: install straight from the git repo** (the "GitHub repository" install in the plugin manager)
 
 ```bash
-dsh plugin --profile web add github:toddpan/dsh-webapi
+dsh plugin --profile web add github:Wuqiyang312/deepseek-server-api
 ```
 
 `lib/` is committed, so a git install is directly runnable. It is kept in sync with `src/`; after
@@ -63,7 +63,7 @@ changing `src/`, rebuild and commit `lib/` in the same change.
 **Option 3: build from source** (needs a DSH source checkout)
 
 ```bash
-git clone https://github.com/toddpan/dsh-webapi && cd dsh-webapi
+git clone https://github.com/Wuqiyang312/deepseek-server-api && cd deepseek-server-api
 DSH_CHECKOUT=/path/to/deepseek-harness bash scripts/build.sh     # src/ → lib/
 dsh plugin --profile web add "$PWD"
 ```
@@ -306,7 +306,7 @@ HTTP, third-party integration, OpenAI-compatible calls; also available in-sessio
 ### Install online (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/toddpan/dsh-webapi/main/scripts/install-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash
 ```
 
 It installs into the user-level skill directory `~/.dsh/skills/dsh-web-service/`, where DSH's
@@ -320,7 +320,7 @@ curl -fsSL .../install-skill.sh | bash -s -- --dir /path/to/project/.dsh/skills
 
 # Pick a branch / repository
 curl -fsSL .../install-skill.sh | bash -s -- --branch dev
-curl -fsSL .../install-skill.sh | bash -s -- --repo other/dsh-webapi
+curl -fsSL .../install-skill.sh | bash -s -- --repo other/deepseek-server-api
 
 # Uninstall
 curl -fsSL .../install-skill.sh | bash -s -- uninstall

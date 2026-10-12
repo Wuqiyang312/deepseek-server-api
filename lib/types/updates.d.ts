@@ -1,7 +1,7 @@
 /**
  * dsh-web-service - 检查更新
  *
- * 版本单一来源：GitHub Releases（仓库 homepage/bugs 同源 toddpan/dsh-webapi）。
+ * 版本单一来源：GitHub Releases（仓库 homepage/bugs 同源 Wuqiyang312/deepseek-server-api）。
  * - 成功结果缓存 10 分钟，避免公开端点被刷成 GitHub 的出站代理；
  * - 失败结果缓存 60 秒（网络抖动时不反复打超时请求）；
  * - 检查更新是尽力而为的能力：任何失败都不抛错，返回带 error 说明的结果，

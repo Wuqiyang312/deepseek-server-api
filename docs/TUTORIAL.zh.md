@@ -44,12 +44,18 @@ flowchart LR
 
 ### 第 1 步：安装
 
+本插件挂在 DSH 宿主的 webserver 上（随附的 web 模板提供），所以先初始化一个专属 profile
+`api-server`，再装插件：
+
 ```bash
-dsh plugin --profile web add \
-  https://github.com/toddpan/dsh-webapi/releases/latest/download/dsh-web-service.tgz
+# 仅首次执行这一条：从随附 web 模板初始化 api-server profile
+dsh --profile api-server --from-default-profile web --dump-config > /dev/null
+
+dsh plugin --profile api-server add \
+  https://github.com/Wuqiyang312/deepseek-server-api/releases/latest/download/dsh-web-service.tgz
 ```
 
-带 HMR 的 profile 会立即生效，否则重启一下 DSH。
+启动（或重启）：`dsh --profile api-server`。带 HMR 的 profile 装完立即生效，否则需重启 DSH。
 
 ### 第 2 步：确认在跑
 
@@ -245,7 +251,7 @@ curl -H "X-API-Key: dsk_xxx" $BASE/sessions
 仓库自带一份 SKILL，装上后 Agent 能自己调用这套接口（比如让一个会话去指挥另一个会话）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/toddpan/dsh-webapi/main/scripts/install-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash
 ```
 
 装到 `~/.dsh/skills/dsh-web-service/`，无需重启，下个会话生效；会话里也可以用 `/dsh-web-service` 直接调起。

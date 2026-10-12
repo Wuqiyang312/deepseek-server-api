@@ -29,7 +29,7 @@ REST 接口与 SSE 流，再加一个 OpenAI 兼容的 `/chat/completions`，现
 dsh --profile api-server --from-default-profile web --dump-config > /dev/null
 # 2) 把本插件装进该 profile
 dsh plugin --profile api-server add \
-  https://github.com/toddpan/dsh-webapi/releases/latest/download/dsh-web-service.tgz
+  https://github.com/Wuqiyang312/deepseek-server-api/releases/latest/download/dsh-web-service.tgz
 # 3) 启动（若 DSH 已在运行则重启）
 dsh --profile api-server
 ```
@@ -47,12 +47,12 @@ curl -sI http://127.0.0.1:3080/api/v1/docs           # HTTP/1.1 200 OK
 
 > **升级提示。** 资产名不带版本号，`latest/download/dsh-web-service.tgz` 对**全新安装**永远指向最新构建；
 > 但包管理器可能复用该 URL 的旧解析结果。要把已有安装切到确定版本，用带版本号的资产：
-> `dsh plugin --profile api-server add https://github.com/toddpan/dsh-webapi/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
+> `dsh plugin --profile api-server add https://github.com/Wuqiyang312/deepseek-server-api/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
 
 **方式二：直接从 git 仓库安装**（插件管理器的「GitHub 仓库地址」安装方式）
 
 ```bash
-dsh plugin --profile web add github:toddpan/dsh-webapi
+dsh plugin --profile web add github:Wuqiyang312/deepseek-server-api
 ```
 
 `lib/` 已入库，所以从 git 装的包可直接运行。`lib/` 与 `src/` 保持同步——改动 `src/` 后，
@@ -61,7 +61,7 @@ dsh plugin --profile web add github:toddpan/dsh-webapi
 **方式三：从源码构建**（需要一份 DSH 源码 checkout）
 
 ```bash
-git clone https://github.com/toddpan/dsh-webapi && cd dsh-webapi
+git clone https://github.com/Wuqiyang312/deepseek-server-api && cd deepseek-server-api
 DSH_CHECKOUT=/path/to/deepseek-harness bash scripts/build.sh     # src/ → lib/
 dsh plugin --profile web add "$PWD"
 ```
@@ -281,7 +281,7 @@ dev_reload_package {"packageName": "dsh-web-service"}
 ### 一键在线安装（推荐）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/toddpan/dsh-webapi/main/scripts/install-skill.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Wuqiyang312/deepseek-server-api/main/scripts/install-skill.sh | bash
 ```
 
 安装到用户级 skill 目录 `~/.dsh/skills/dsh-web-service/`，DSH 的 skill-filesystem 提供方会热发现（无需重启），下一个会话即可用。
@@ -294,7 +294,7 @@ curl -fsSL .../install-skill.sh | bash -s -- --dir /path/to/project/.dsh/skills
 
 # 指定分支 / 仓库
 curl -fsSL .../install-skill.sh | bash -s -- --branch dev
-curl -fsSL .../install-skill.sh | bash -s -- --repo other/dsh-webapi
+curl -fsSL .../install-skill.sh | bash -s -- --repo other/deepseek-server-api
 
 # 卸载
 curl -fsSL .../install-skill.sh | bash -s -- uninstall
