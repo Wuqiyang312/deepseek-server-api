@@ -25,6 +25,10 @@ import { registerApiKeyRoutes } from './api-keys.js'
 import { pluginVersion } from './version.js'
 import { checkForUpdate } from './updates.js'
 import type { WebServiceConfig } from './types.js'
+import type { Duplex } from 'node:stream'
+import { buildKimiWsDeps, registerKimiCompatRoutes } from './kimi-compat.js'
+import { handleKimiUpgrade } from './kimi-ws.js'
+import { KimiErrorCode, kimiErr, resolveRequestId, sendKimiJson } from './kimi-contract.js'
 
 
 export const name = 'dsh-web-service'
@@ -40,6 +44,8 @@ export const Config: z<Config> = z.object({
   defaultCwd: z.string().default('').description('默认工作目录（留空则为 process.cwd()）'),
   maxUploadBytes: z.natural().default(2 * 1024 * 1024 * 1024).description('文件上传大小上限（字节，默认 2GB；大文件建议走 /files/resumable 分片接口）'),
   adminRemoteAccess: z.boolean().default(false).description('是否允许非回环地址访问 API Key 管理接口（默认 false，仅本机可管理密钥）'),
+  kimi: z.boolean().default(true).description('kimi API 兼容层开关（REST /kimi + WS）'),
+  kimiPrefix: z.string().default('/kimi').description('kimi 兼容层路由前缀'),
 })
 
 export function apply(ctx: Context, config: Config): void {
@@ -94,6 +100,43 @@ export function apply(ctx: Context, config: Config): void {
   registerOpenApiRoutes(router, config)
   registerApiKeyRoutes(router, config, keyStore)
 
+  // 2.1 kimi API 兼容层：独立前缀下的第二个 router（自带 kimiAuth 闸门，勿 setAuthService）
+  let kimiRouter: HttpRouter | null = null
+  let kimiPrefix = '/kimi'
+  if (config.kimi) {
+    kimiPrefix = config.kimiPrefix || '/kimi'
+    kimiRouter = new HttpRouter(config)
+    registerKimiCompatRoutes(ctx, kimiRouter, { config, keyStore })
+
+    ctx.effect(() => {
+      return ctx.webServer.register({
+        kind: 'prefix',
+        path: kimiPrefix,
+        handler: async (req: IncomingMessage, res: ServerResponse) => {
+          const handled = await kimiRouter!.dispatch(req, res, kimiPrefix)
+          if (!handled && !res.headersSent) {
+            const rid = resolveRequestId(req.headers['x-request-id'] as string | undefined)
+            sendKimiJson(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, `Endpoint not found: ${req.url}`, rid), 404)
+          }
+        },
+      })
+    }, 'dsh-web-service: kimi compat prefix route')
+
+    // WS：宿主 registerUpgrade 能力探测；缺失则跳过 WS（REST 仍可用）
+    const kimiWsPath = `${kimiPrefix}/api/v1/ws`
+    const webServer = ctx.get('webServer') as any
+    if (typeof webServer?.registerUpgrade === 'function') {
+      ctx.effect(() => webServer.registerUpgrade({
+        path: kimiWsPath,
+        handler: (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+          handleKimiUpgrade(req, socket, head, buildKimiWsDeps(ctx, { config, keyStore }))
+        },
+      }), 'dsh-web-service: kimi ws upgrade')
+    } else {
+      console.warn('[dsh-web-service] webServer.registerUpgrade 不可用，kimi WS 未启用（REST 仍可用）')
+    }
+  }
+
   // 3. 挂载到 DSH 主 Web 服务器 (ctx.webServer)
   ctx.effect(() => {
     return ctx.webServer.register({
@@ -124,7 +167,29 @@ export function apply(ctx: Context, config: Config): void {
             code: 'NOT_FOUND',
           })
         }
+        if (kimiRouter) {
+          const kimiHandled = await kimiRouter.dispatch(req, res, kimiPrefix)
+          if (!kimiHandled && !res.headersSent) {
+            const rid = resolveRequestId(req.headers['x-request-id'] as string | undefined)
+            sendKimiJson(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, `Endpoint not found: ${req.url}`, rid), 404)
+          }
+        }
       })
+
+      if (kimiRouter) {
+        const kimiWsPath = `${kimiPrefix}/api/v1/ws`
+        server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+          let pathname = ''
+          try {
+            pathname = new URL(req.url || '/', 'http://localhost').pathname
+          } catch { /* 保持空串，下方不命中 */ }
+          if (pathname !== kimiWsPath) {
+            socket.destroy()
+            return
+          }
+          handleKimiUpgrade(req, socket, head, buildKimiWsDeps(ctx, { config, keyStore }))
+        })
+      }
 
       server.listen(config.standalonePort, '0.0.0.0')
 
@@ -159,6 +224,7 @@ export function apply(ctx: Context, config: Config): void {
           apiKeyConfigured: keyStore.getAuthEnabled(),
           apiKeyCount: keyStore.countActive(),
           adminTokenPath: keyStore.adminTokenPath,
+          kimiBaseUrl: config.kimi ? `http://127.0.0.1:${mainPort}${kimiPrefix}` : undefined,
         }
         return JSON.stringify(info, null, 2)
       },

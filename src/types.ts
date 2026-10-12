@@ -167,6 +167,10 @@ export interface WebServiceConfig {
    * 默认仅允许本机（回环）管理密钥；确需远程管理时显式开启。
    */
   adminRemoteAccess?: boolean
+  /** kimi API 兼容层开关，默认 true */
+  kimi?: boolean
+  /** kimi 兼容层路由前缀，默认 '/kimi' */
+  kimiPrefix?: string
   /** 技能管理：额外自定义技能根目录（root=custom 时使用） */
   customSkillDirs?: string[]
   /** 技能管理：DSH 配置根（默认 $DSH_HOME 或 ~/.dsh） */
