@@ -48,6 +48,36 @@ const pendings = new Map<string, PendingBatch[]>()
 /** 上限防泄漏：单会话最多同时挂起的批次 */
 const MAX_BATCHES_PER_SESSION = 8
 
+/** 兼容层只读视图：某会话当前挂起的问题批次（不含 resolve/reject 句柄）。 */
+export function listPendingBatches(sessionId: string): Array<{ batchId: string; at: number; questions: Array<Record<string, any>> }> {
+  return (pendings.get(sessionId) || []).map((b) => ({ batchId: b.batchId, at: b.at, questions: b.questions }))
+}
+
+/** 兼容层按批次 id 提交答复；找不到批次返回 false。 */
+export function resolvePendingBatchById(
+  sessionId: string,
+  batchId: string,
+  answers: Array<{ id: string; selected: string[]; custom?: string }>,
+): boolean {
+  const batch = (pendings.get(sessionId) || []).find((b) => b.batchId === batchId)
+  if (!batch) return false
+  // 未作答的题按空答复补齐，与 REST /answers 端点语义一致
+  const filled = answers.slice()
+  for (const q of batch.questions) {
+    if (!filled.some((a) => a.id === q.id)) filled.push({ id: q.id, selected: [] })
+  }
+  batch.resolve({ answers: filled })
+  return true
+}
+
+/** 兼容层取消（dismiss）挂起批次；找不到批次返回 false。 */
+export function rejectPendingBatchById(sessionId: string, batchId: string, reason: string): boolean {
+  const batch = (pendings.get(sessionId) || []).find((b) => b.batchId === batchId)
+  if (!batch) return false
+  batch.reject(new Error(reason))
+  return true
+}
+
 function normalizeQuestions(raw: any): Array<Record<string, any>> {
   if (!Array.isArray(raw)) return []
   return raw.map((q) => {

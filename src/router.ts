@@ -53,9 +53,26 @@ export interface AuthServiceLike {
   touch(keyId: string): void
 }
 
+/**
+ * 框架层失败（鉴权不过、JSON 解析失败、体过大、handler 抛错）的响应写法。
+ * 默认发原生 `{ ok:false, ... }` 信封；kimi 兼容层换成 `{ code, msg, ... }` 数字码信封。
+ */
+export type RouterErrorFormatter = (
+  res: ServerResponse,
+  status: number,
+  code: string,
+  message: string,
+  req?: IncomingMessage,
+) => void
+
+const defaultErrorFormatter: RouterErrorFormatter = (res, status, code, message) => {
+  sendJson(res, status, { ok: false, error: message, code })
+}
+
 export class HttpRouter {
   private routes: RouteEntry[] = []
   private auth: AuthServiceLike | null = null
+  private errorFormatter: RouterErrorFormatter = defaultErrorFormatter
 
   constructor(private config: WebServiceConfig) {}
 
@@ -64,17 +81,35 @@ export class HttpRouter {
     this.auth = auth
   }
 
+  /** 替换框架层失败的响应写法（kimi 兼容层用） */
+  setErrorFormatter(fn: RouterErrorFormatter): void {
+    this.errorFormatter = fn
+  }
+
+  private fail(res: ServerResponse, status: number, code: string, message: string, req?: IncomingMessage): void {
+    if (res.headersSent) return
+    this.errorFormatter(res, status, code, message, req)
+  }
+
   add(method: string, pathPattern: string, handler: RouteHandler, options?: RouteOptions): void {
     const paramNames: string[] = []
-    // 转换形如 /workspaces/:id/sessions 为正则表达式
-    const regexStr = pathPattern
+    // 转换形如 /workspaces/:id/sessions 为正则表达式；尾部的 `*` 通配捕获为 params['*']
+    // （先抽成占位符，避免 `*` 被后面的斜杠转义规则以外的处理破坏）
+    let wildcard = false
+    let working = pathPattern
+    if (working.endsWith('/*')) {
+      working = working.slice(0, -2)
+      wildcard = true
+    }
+    const regexStr = working
       .replace(/:([a-zA-Z0-9_]+)/g, (_, name) => {
         paramNames.push(name)
         return '([^/]+)'
       })
       .replace(/\//g, '\\/')
+    if (wildcard) paramNames.push('*')
 
-    const pattern = new RegExp(`^${regexStr}$`)
+    const pattern = new RegExp(`^${regexStr}${wildcard ? '(?:\\/(.*))?' : ''}$`)
     this.routes.push({
       method: method.toUpperCase(),
       pattern,
@@ -191,11 +226,7 @@ export class HttpRouter {
           : { ok: timingSafeEqualString(token, this.config.apiKey || ''), keyId: undefined }
 
         if (!verdict.ok) {
-          sendJson(res, 401, {
-            ok: false,
-            error: 'Unauthorized: Invalid or missing API key',
-            code: 'UNAUTHORIZED',
-          })
+          this.fail(res, 401, 'UNAUTHORIZED', 'Unauthorized: Invalid or missing API key', req)
           return true
         }
         if (verdict.keyId && this.auth) this.auth.touch(verdict.keyId)
@@ -211,22 +242,16 @@ export class HttpRouter {
         try {
           body = await readRawBody(req, this.config.maxUploadBytes || 2 * 1024 * 1024 * 1024)
         } catch (err: any) {
-          sendJson(res, err?.message?.includes('too large') ? 413 : 400, {
-            ok: false,
-            error: err?.message || 'Failed to read request body',
-            code: err?.message?.includes('too large') ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST',
-          })
+          const tooLarge = err?.message?.includes('too large')
+          this.fail(res, tooLarge ? 413 : 400, tooLarge ? 'PAYLOAD_TOO_LARGE' : 'BAD_REQUEST',
+            tooLarge ? err.message : `Failed to read request body: ${err?.message || 'unknown'}`, req)
           return true
         }
       } else {
         try {
           body = await readJsonBody(req)
         } catch (err: any) {
-          sendJson(res, 400, {
-            ok: false,
-            error: `Invalid JSON body: ${err.message}`,
-            code: 'BAD_REQUEST',
-          })
+          this.fail(res, 400, 'BAD_REQUEST', `Invalid JSON body: ${err.message}`, req)
           return true
         }
       }
@@ -236,13 +261,7 @@ export class HttpRouter {
     try {
       await matchedRoute.handler(req, res, matchedParams, query, body)
     } catch (err: any) {
-      if (!res.headersSent) {
-        sendJson(res, 500, {
-          ok: false,
-          error: err?.message || 'Internal Server Error',
-          code: 'INTERNAL_ERROR',
-        })
-      }
+      this.fail(res, 500, 'INTERNAL_ERROR', err?.message || 'Internal Server Error', req)
     }
 
     return true

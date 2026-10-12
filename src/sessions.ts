@@ -16,7 +16,7 @@ import type { SessionCreateInput, SessionItem, SessionUpdateInput, SessionHistor
  * events 可能缺失或非数组）。任何形态异常都不能让 GET /sessions/:id 500，
  * 否则调用方（如 WorkBuddy）会误判会话丢失而重建，导致多轮上下文清零。
  */
-function snapshotLiveEvents(liveSession: any, fallback: any[]): any[] {
+export function snapshotLiveEvents(liveSession: any, fallback: any[]): any[] {
   const ev = liveSession?.events
   if (Array.isArray(ev)) return ev.slice()
   if (ev && typeof ev[Symbol.iterator] === 'function') {
@@ -26,7 +26,7 @@ function snapshotLiveEvents(liveSession: any, fallback: any[]): any[] {
 }
 
 /** 读取会话完整持久事件日志（sessionController.inspect 优先，live session 兜底）。 */
-async function loadSessionEvents(ctx: Context, sessionId: string): Promise<any[]> {
+export async function loadSessionEvents(ctx: Context, sessionId: string): Promise<any[]> {
   const sessionController = ctx.get('sessionController') as any
   let events: any[] = []
   if (sessionController && typeof sessionController.inspect === 'function') {
@@ -330,7 +330,7 @@ export function foldSessionTodos(events: any[], now: number = Date.now()): Sessi
 }
 
 /** live agent 运行态（权威）：返回 undefined 表示查不到（调用方回退事件推断）。 */
-function liveRunningState(ctx: Context, sessionId: string): boolean | undefined {
+export function liveRunningState(ctx: Context, sessionId: string): boolean | undefined {
   const agentsService = ctx.get('agents') as any
   const agent = agentsService?.get ? agentsService.get(sessionId) : undefined
   if (agent && typeof agent.status === 'string') return agent.status === 'running'

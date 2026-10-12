@@ -104,7 +104,7 @@ export function sanitizeFilename(raw: string | undefined): string {
 }
 
 /** 目标路径去重：同名自动 -1/-2 后缀，永不覆盖已有文件 */
-function uniqueTarget(dir: string, name: string): string {
+export function uniqueTarget(dir: string, name: string): string {
   const ext = path.extname(name)
   const stem = path.basename(name, ext)
   let candidate = path.join(dir, name)
@@ -117,7 +117,7 @@ function uniqueTarget(dir: string, name: string): string {
 }
 
 /** 解析会话当前工作目录：优先 live session header.cwd，回退 sessionController.inspect */
-async function resolveSessionCwd(ctx: Context, sessionId: string): Promise<string | undefined> {
+export async function resolveSessionCwd(ctx: Context, sessionId: string): Promise<string | undefined> {
   const sessionsService = ctx.get('sessions') as any
   const live = sessionsService?.get ? sessionsService.get(sessionId) : undefined
   const liveCwd = live?.header?.cwd
@@ -136,7 +136,7 @@ async function resolveSessionCwd(ctx: Context, sessionId: string): Promise<strin
 }
 
 /** 相对路径安全拼接：解析后必须仍位于 cwd 内（防 ../ 越界），否则返回 undefined */
-function safeJoin(cwd: string, rel: string): string | undefined {
+export function safeJoin(cwd: string, rel: string): string | undefined {
   const root = path.resolve(cwd)
   const target = path.resolve(root, String(rel || '').replace(/^\//, ''))
   if (target !== root && !target.startsWith(root + path.sep)) return undefined
@@ -153,7 +153,7 @@ const MIME_MAP: Record<string, string> = {
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.webm': 'video/webm',
 }
 
-function lookupMime(filePath: string): string {
+export function lookupMime(filePath: string): string {
   return MIME_MAP[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
 }
 

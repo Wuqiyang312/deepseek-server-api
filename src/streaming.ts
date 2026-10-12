@@ -444,7 +444,7 @@ export function registerStreamingRoutes(ctx: Context, router: any): void {
 }
 
 /** 提交 Prompt 到 Session 执行 */
-async function submitPromptToSession(ctx: Context, sessionId: string, input: SessionPromptInput): Promise<void> {
+export async function submitPromptToSession(ctx: Context, sessionId: string, input: SessionPromptInput): Promise<void> {
   const sessionController = ctx.get('sessionController') as any
   let resolvedAgent: any = undefined
 
