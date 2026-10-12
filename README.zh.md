@@ -21,10 +21,21 @@ REST 接口与 SSE 流，再加一个 OpenAI 兼容的 `/chat/completions`，现
 
 **方式一：预构建 tarball（推荐，免构建、免 `allowBuilds` 授权）**
 
+本插件 `inject` 宿主的 `webServer`，该服务由随附 web 模板的组合包（base + web-app）提供。
+自定义 profile 名（如 `api-server`）需先从该模板初始化一次，再安装：
+
 ```bash
-dsh plugin --profile web add \
+# 1) 仅首次：从随附 web 模板初始化 api-server profile（dump 模式只初始化、不启动应用）
+dsh --profile api-server --from-default-profile web --dump-config > /dev/null
+# 2) 把本插件装进该 profile
+dsh plugin --profile api-server add \
   https://github.com/toddpan/dsh-webapi/releases/latest/download/dsh-web-service.tgz
+# 3) 启动（若 DSH 已在运行则重启）
+dsh --profile api-server
 ```
+
+`--from-default-profile` 在目标已存在时会被拒绝，所以第 1 步只需执行一次。用专属名而不是随附的
+`web`，可与 DSH Web GUI 的 profile 互不干扰。
 
 `dsh plugin` 会把该包写进 profile 的 `package.json`（依赖 + `dsh.profile.bundles`）；
 带 HMR 的 profile 会立即装配，否则重启 DSH 生效。探活：
@@ -36,7 +47,7 @@ curl -sI http://127.0.0.1:3080/api/v1/docs           # HTTP/1.1 200 OK
 
 > **升级提示。** 资产名不带版本号，`latest/download/dsh-web-service.tgz` 对**全新安装**永远指向最新构建；
 > 但包管理器可能复用该 URL 的旧解析结果。要把已有安装切到确定版本，用带版本号的资产：
-> `dsh plugin --profile web add https://github.com/toddpan/dsh-webapi/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
+> `dsh plugin --profile api-server add https://github.com/toddpan/dsh-webapi/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
 
 **方式二：直接从 git 仓库安装**（插件管理器的「GitHub 仓库地址」安装方式）
 
@@ -179,6 +190,23 @@ cat "${DSH_HOME:-$HOME/.dsh}/dsh-web-service/admin-token"
    上传/列出/下载工作区文件（含分片续传上传）。
 8. **API Key 设置页与密钥管理**：`GET /api/v1/settings/api-keys` 一页管理三方调用密钥——
    多 Key 并存可命名、脱敏展示、新建/轮换/吊销、列表一键复制、开启关闭鉴权；落盘存哈希 + 管理令牌加密的密文。
+
+## Kimi API 兼容层
+
+挂载在独立前缀（默认 `/kimi`，配置项 `kimiPrefix`）下的 kimi 本地服务（kap-server）API 兼容层，可用 kimi 官方 SDK 直连：
+
+```js
+import { KimiClient } from '@kimi-code/sdk' // 以实际 SDK 包名为准
+const client = new KimiClient({ baseUrl: 'http://127.0.0.1:3080/kimi', apiKey: '<data key>' })
+```
+
+- 开关：`kimi`（默认 `true`）；前缀：`kimiPrefix`（默认 `/kimi`）
+- 鉴权：复用 API Key 体系；未开启鉴权时匿名可用，WS 走 `kimi-code.bearer.<token>` 子协议
+- REST：`/kimi/api/v1/**`（信封 `{code,msg,data,request_id,details}`，业务失败 HTTP 200 + 非零 code）与 `/kimi/api/v2/sessions`
+- WS：`/kimi/api/v1/ws`（server_hello protocol_version=2；subscribe/subscribe_v2）
+- fs 动作支持子集：`list / stat / read / mkdir / search / grep`；文件下载 `GET /sessions/{id}/fs/*`（暂不支持 Range/etag）
+- 降级语义（DSH 无对应能力，如实返回错误码）：`approvals`（空列表/40404）、`fork`（新建同工作区会话，不复制历史）、`compact`（40910）、`undo`（40911）、`btw`（60002）、`add-dir`（空实现）、`title-generate`（60002）
+- 宿主需支持 `webServer.registerUpgrade` 才启用 WS；缺失时仅 REST 可用（启动日志有警告）
 
 ## API 路由汇总
 

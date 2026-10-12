@@ -21,10 +21,22 @@ Requires DSH `0.1.0`–`0.2.x` (peer ranges in `package.json`; verified on `0.1.
 
 **Option 1: prebuilt tarball (recommended — no build step, no `allowBuilds` approval)**
 
+The plugin injects the host's `webServer`, which ships in the attached `web` template
+(base + web-app). A custom profile name such as `api-server` must be initialized from that
+template once before installing into it:
+
 ```bash
-dsh plugin --profile web add \
+# 1) One time only: initialize the api-server profile from the attached web template (no app start)
+dsh --profile api-server --from-default-profile web --dump-config > /dev/null
+# 2) Install dsh-web-service into that profile
+dsh plugin --profile api-server add \
   https://github.com/toddpan/dsh-webapi/releases/latest/download/dsh-web-service.tgz
+# 3) Start (or restart DSH if it is already running under this profile)
+dsh --profile api-server
 ```
+
+`--from-default-profile` is rejected once the target exists, so step 1 runs only once. A dedicated
+name keeps this install separate from the stock `web` profile (e.g. your DSH Web GUI).
 
 `dsh plugin` records the package in the profile `package.json` (dependency + `dsh.profile.bundles`);
 a profile with HMR assembles it immediately, otherwise restart DSH. Verify:
@@ -37,7 +49,7 @@ curl -sI http://127.0.0.1:3080/api/v1/docs           # HTTP/1.1 200 OK
 > **Upgrading.** The asset name carries no version, so `latest/download/dsh-web-service.tgz` always
 > points at the newest build for a *fresh* install — but package managers may reuse a cached
 > resolution of that URL. To move an existing install to a known build, pin the versioned asset:
-> `dsh plugin --profile web add https://github.com/toddpan/dsh-webapi/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
+> `dsh plugin --profile api-server add https://github.com/toddpan/dsh-webapi/releases/download/v0.1.11/dsh-web-service-0.1.11.tgz`
 
 **Option 2: install straight from the git repo** (the "GitHub repository" install in the plugin manager)
 
@@ -193,6 +205,30 @@ The store lives at `<DSH_HOME>/dsh-web-service/api-keys.json` (mode 0600).
 8. **API Key settings page** — `GET /api/v1/settings/api-keys` manages third-party access keys in one
    place: multiple named keys, masked display, create / rotate / revoke, and an auth on/off switch.
    Hashes plus an admin-token-encrypted sealed copy are persisted.
+
+## Kimi API compatibility layer
+
+The compatibility layer for the kimi local service (kap-server) API mounts under a separate prefix
+(default `/kimi`, configured by `kimiPrefix`). Connect directly with the official kimi SDK:
+
+```js
+import { KimiClient } from '@kimi-code/sdk' // Use the actual SDK package name
+const client = new KimiClient({ baseUrl: 'http://127.0.0.1:3080/kimi', apiKey: '<data key>' })
+```
+
+- Enable: `kimi` (default `true`); prefix: `kimiPrefix` (default `/kimi`).
+- Authentication: reuses the API Key system; anonymous access is available when auth is disabled.
+  WS uses the `kimi-code.bearer.<token>` subprotocol.
+- REST: `/kimi/api/v1/**` (envelope `{code,msg,data,request_id,details}`; business failures return
+  HTTP 200 with a nonzero code) and `/kimi/api/v2/sessions`.
+- WS: `/kimi/api/v1/ws` (`server_hello` with `protocol_version=2`; `subscribe` / `subscribe_v2`).
+- Supported fs actions: `list / stat / read / mkdir / search / grep`; file download via
+  `GET /sessions/{id}/fs/*` (Range/etag are not supported yet).
+- Degraded semantics where DSH lacks an equivalent capability: `approvals` (empty list/40404),
+  `fork` (new session in the same workspace, without copying history), `compact` (40910),
+  `undo` (40911), `btw` (60002), `add-dir` (no-op), `title-generate` (60002).
+- The host must support `webServer.registerUpgrade` to enable WS; otherwise only REST is available
+  (a warning appears in the startup log).
 
 ## API routes
 

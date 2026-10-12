@@ -28,6 +28,16 @@ curl -s http://127.0.0.1:3080/api/v1/system/status          # 本机
 curl -s http://<隧道host>:<public_port>/api/v1/system/status # 经隧道
 ```
 
+## Kimi API 兼容层
+
+- 独立 Base URL：`http://127.0.0.1:3080/kimi`；开关 `kimi` 默认 `true`，前缀 `kimiPrefix` 默认 `/kimi`。
+- REST：`/kimi/api/v1/**` 与 `/kimi/api/v2/sessions`；使用 `{code,msg,data,request_id,details}` 信封，业务失败为 HTTP 200 + 非零 `code`。
+- 复用 API Key 鉴权，未开启时匿名可用；WS `/kimi/api/v1/ws` 使用 `kimi-code.bearer.<token>` 子协议，支持 `server_hello`（`protocol_version=2`）及 `subscribe/subscribe_v2`。宿主缺少 `webServer.registerUpgrade` 时仅 REST 可用。
+- fs 子集：`list/stat/read/mkdir/search/grep`；下载 `GET /kimi/api/v1/sessions/{id}/fs/*`，暂不支持 Range/etag。
+- 降级：`approvals` 空列表/40404；`fork` 新建同工作区会话、不复制历史；`compact` 40910；`undo` 40911；`btw` / `title-generate` 60002；`add-dir` 空实现。
+
+配置与 SDK 示例见 [README.zh.md 的 Kimi 章节](../../README.zh.md#kimi-api-兼容层)；英文版见 [README.md](../../README.md#kimi-api-compatibility-layer)。下文响应约定与端点表针对原生 `/api/v1`。
+
 ## 统一响应约定
 
 除 `/chat/completions` 外，所有接口返回：
