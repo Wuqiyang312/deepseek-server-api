@@ -159,6 +159,18 @@ export function apply(ctx: Context, config: Config): void {
   if (config.standalonePort && config.standalonePort > 0) {
     ctx.effect(() => {
       const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+        let pathname = ''
+        try {
+          pathname = new URL(req.url || '/', 'http://localhost').pathname
+        } catch { /* 无效 URL 交由原生 router 处理 */ }
+        if (kimiRouter && (pathname === kimiPrefix || pathname.startsWith(`${kimiPrefix}/`))) {
+          const kimiHandled = await kimiRouter.dispatch(req, res, kimiPrefix)
+          if (!kimiHandled && !res.headersSent) {
+            const rid = resolveRequestId(req.headers['x-request-id'] as string | undefined)
+            sendKimiJson(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, `Endpoint not found: ${req.url}`, rid), 404)
+          }
+          return
+        }
         const handled = await router.dispatch(req, res, prefix)
         if (!handled && !res.headersSent) {
           sendJson(res, 404, {
@@ -166,13 +178,6 @@ export function apply(ctx: Context, config: Config): void {
             error: `Endpoint not found: ${req.url}`,
             code: 'NOT_FOUND',
           })
-        }
-        if (kimiRouter) {
-          const kimiHandled = await kimiRouter.dispatch(req, res, kimiPrefix)
-          if (!kimiHandled && !res.headersSent) {
-            const rid = resolveRequestId(req.headers['x-request-id'] as string | undefined)
-            sendKimiJson(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, `Endpoint not found: ${req.url}`, rid), 404)
-          }
         }
       })
 
