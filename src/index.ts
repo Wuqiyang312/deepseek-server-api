@@ -158,6 +158,7 @@ export function apply(ctx: Context, config: Config): void {
   // 4. 可选：开启独立 HTTP 监听端口
   if (config.standalonePort && config.standalonePort > 0) {
     ctx.effect(() => {
+      const upgradedSockets = new Set<Duplex>()
       const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         let pathname = ''
         try {
@@ -192,13 +193,21 @@ export function apply(ctx: Context, config: Config): void {
             socket.destroy()
             return
           }
-          handleKimiUpgrade(req, socket, head, buildKimiWsDeps(ctx, { config, keyStore }))
+          try {
+            handleKimiUpgrade(req, socket, head, buildKimiWsDeps(ctx, { config, keyStore }))
+            upgradedSockets.add(socket)
+            socket.on('close', () => upgradedSockets.delete(socket))
+          } catch (err) {
+            console.warn('[dsh-web-service] standalone kimi WS upgrade 失败', err)
+            socket.destroy()
+          }
         })
       }
 
       server.listen(config.standalonePort, '0.0.0.0')
 
       return () => {
+        for (const s of upgradedSockets) s.destroy()
         server.close()
       }
     }, 'dsh-web-service: standalone http server')
