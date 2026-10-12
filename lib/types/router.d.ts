@@ -34,13 +34,22 @@ export interface AuthServiceLike {
     };
     touch(keyId: string): void;
 }
+/**
+ * 框架层失败（鉴权不过、JSON 解析失败、体过大、handler 抛错）的响应写法。
+ * 默认发原生 `{ ok:false, ... }` 信封；kimi 兼容层换成 `{ code, msg, ... }` 数字码信封。
+ */
+export type RouterErrorFormatter = (res: ServerResponse, status: number, code: string, message: string, req?: IncomingMessage) => void;
 export declare class HttpRouter {
     private config;
     private routes;
     private auth;
+    private errorFormatter;
     constructor(config: WebServiceConfig);
     /** 注入多 Key 鉴权服务 */
     setAuthService(auth: AuthServiceLike): void;
+    /** 替换框架层失败的响应写法（kimi 兼容层用） */
+    setErrorFormatter(fn: RouterErrorFormatter): void;
+    private fail;
     add(method: string, pathPattern: string, handler: RouteHandler, options?: RouteOptions): void;
     get(pathPattern: string, handler: RouteHandler, options?: RouteOptions): void;
     post(pathPattern: string, handler: RouteHandler, options?: RouteOptions): void;

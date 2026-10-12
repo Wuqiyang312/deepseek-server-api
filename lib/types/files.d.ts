@@ -20,6 +20,13 @@ export interface UploadedPart {
 export declare function parseMultipart(buffer: Buffer, contentType: string): UploadedPart[];
 /** 清洗文件名：取 basename、去控制字符、限长；非法名回退为 file-<ts> */
 export declare function sanitizeFilename(raw: string | undefined): string;
+/** 目标路径去重：同名自动 -1/-2 后缀，永不覆盖已有文件 */
+export declare function uniqueTarget(dir: string, name: string): string;
+/** 解析会话当前工作目录：优先 live session header.cwd，回退 sessionController.inspect */
+export declare function resolveSessionCwd(ctx: Context, sessionId: string): Promise<string | undefined>;
+/** 相对路径安全拼接：解析后必须仍位于 cwd 内（防 ../ 越界），否则返回 undefined */
+export declare function safeJoin(cwd: string, rel: string): string | undefined;
+export declare function lookupMime(filePath: string): string;
 /**
  * GET /sessions/:id/files        — 列出会话工作区目录（?path= 相对子目录）
  * GET /sessions/:id/files/download — 下载文件（?path= 相对路径；?inline=1 浏览器内联预览）

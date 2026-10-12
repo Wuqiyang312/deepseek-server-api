@@ -24,4 +24,18 @@ import { type HttpRouter } from './router.js';
 export declare const askSessionStorage: AsyncLocalStorage<{
     sessionId: string;
 }>;
+/** 兼容层只读视图：某会话当前挂起的问题批次（不含 resolve/reject 句柄）。 */
+export declare function listPendingBatches(sessionId: string): Array<{
+    batchId: string;
+    at: number;
+    questions: Array<Record<string, any>>;
+}>;
+/** 兼容层按批次 id 提交答复；找不到批次返回 false。 */
+export declare function resolvePendingBatchById(sessionId: string, batchId: string, answers: Array<{
+    id: string;
+    selected: string[];
+    custom?: string;
+}>): boolean;
+/** 兼容层取消（dismiss）挂起批次；找不到批次返回 false。 */
+export declare function rejectPendingBatchById(sessionId: string, batchId: string, reason: string): boolean;
 export declare function registerUserQuestionBridge(ctx: Context, router: HttpRouter): void;

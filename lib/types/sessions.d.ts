@@ -3,6 +3,15 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { WebServiceConfig } from './types.js';
+/**
+ * 防御式快照 live session 的事件日志：不同 DSH 核心版本里 `sessions.get()`
+ * 返回的记录结构不同（Session 实例的 events 是 getter；某些版本是包装记录，
+ * events 可能缺失或非数组）。任何形态异常都不能让 GET /sessions/:id 500，
+ * 否则调用方（如 WorkBuddy）会误判会话丢失而重建，导致多轮上下文清零。
+ */
+export declare function snapshotLiveEvents(liveSession: any, fallback: any[]): any[];
+/** 读取会话完整持久事件日志（sessionController.inspect 优先，live session 兜底）。 */
+export declare function loadSessionEvents(ctx: Context, sessionId: string): Promise<any[]>;
 export interface SessionStatsResult {
     turns: number;
     steps: number;
@@ -64,6 +73,8 @@ export interface SessionTodosResult {
  * 时间戳缺失的事件只跳过自身时间贡献，不影响其他字段。
  */
 export declare function foldSessionTodos(events: any[], now?: number): SessionTodosResult;
+/** live agent 运行态（权威）：返回 undefined 表示查不到（调用方回退事件推断）。 */
+export declare function liveRunningState(ctx: Context, sessionId: string): boolean | undefined;
 export declare function registerSessionRoutes(ctx: Context, router: any, config: WebServiceConfig): void;
 type PermFail = {
     error: string;
