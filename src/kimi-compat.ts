@@ -1275,20 +1275,39 @@ export function registerKimiCompatRoutes(
     const gate = await sessionGate(ctx, req, res, auth, params.id)
     if (!gate) return
     const { rid, sessionId } = gate
-    void sessionId
-    // 该 pattern 编译后为 `/prompts:([^/]+)`：合法命中只有 `::steer`（捕获值 = ':steer'）
+    // 该 pattern 编译后为 `/prompts:([^/]+)`，会吞掉所有 `/prompts:<x>` 单段冒号形态：
+    // ':steer' → 批量 steer；':abort' → 整会话 abort；':<pid>:steer' / ':<pid>:abort' → 单 prompt 动作。
     const colonTail = String((params as any).steer ?? '')
-    if (colonTail !== ':steer') {
-      fail(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, `unsupported action: prompts${colonTail}`, rid))
+    if (colonTail === ':steer') {
+      const ids = Array.isArray(body?.prompt_ids) ? body.prompt_ids.map(String).filter(Boolean) : []
+      if (ids.length === 0) {
+        fail(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, 'validation failed', rid,
+          [{ path: 'prompt_ids', message: 'prompt_ids must be a non-empty array' }]))
+        return
+      }
+      sendKimiJson(res, kimiOk({ steered: true, prompt_ids: ids }, rid))
       return
     }
-    const ids = Array.isArray(body?.prompt_ids) ? body.prompt_ids.map(String).filter(Boolean) : []
-    if (ids.length === 0) {
-      fail(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, 'validation failed', rid,
-        [{ path: 'prompt_ids', message: 'prompt_ids must be a non-empty array' }]))
+    const inner = colonTail.startsWith(':') ? colonTail.slice(1) : colonTail
+    const sep = inner.lastIndexOf(':')
+    const maybeAction = sep > 0 ? inner.slice(sep + 1) : inner
+    const promptId = sep > 0 ? inner.slice(0, sep) : ''
+    if (maybeAction === 'abort') {
+      const aborted = await abortDshSession(ctx, sessionId)
+      sendKimiJson(res, kimiOk({ aborted, at_seq: 0 }, rid))
       return
     }
-    sendKimiJson(res, kimiOk({ steered: true, prompt_ids: ids }, rid))
+    if (maybeAction === 'steer') {
+      if (!promptId) {
+        fail(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, 'validation failed', rid,
+          [{ path: 'prompt_id', message: 'prompt_id is required for :steer' }]))
+        return
+      }
+      sendKimiJson(res, kimiOk({ steered: true, prompt_ids: [promptId] }, rid))
+      return
+    }
+    fail(res, kimiErr(KimiErrorCode.VALIDATION_FAILED, `unsupported action: prompts${colonTail}`, rid,
+      [{ path: 'prompt_id', message: unsupportedActionMessage(maybeAction, ['abort', 'steer']) }]))
   }, ADMIN)
 
   router.post('/api/v1/sessions/:id/prompts/:tail', async (req, res, params, _q, body) => {
